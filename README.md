@@ -1,12 +1,44 @@
 # 🩻 RadVLM Eval Studio
 
+[![CI](https://github.com/nevasini1/radvlm-eval-studio/actions/workflows/ci.yml/badge.svg)](https://github.com/nevasini1/radvlm-eval-studio/actions/workflows/ci.yml)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Status: research demo](https://img.shields.io/badge/status-research%20demo-orange.svg)](#safety)
+
 **A GPU-light evaluation and clinician-review workbench for radiology VLM draft reports.**
 
 > ⚠️ **Research demo only. Not for diagnosis or clinical use.** This is not a medical
 > device, has not been clinically validated, and ships with **synthetic data only** —
-> no patient data, no PHI, no model weights.
+> no patient data, no PHI, no model weights. The value here is the **evaluation and
+> workflow architecture**, not clinical model performance.
 
 ---
+
+## Demo video
+
+> _A 3–5 minute walkthrough: seeded flawed draft → RED evaluation → radiologist edit →
+> errors fixed → audit log._
+
+📹 **[Watch the walkthrough](docs/demo_script.md)** — _video link coming soon; the
+[demo script](docs/demo_script.md) is the exact 4-minute walkthrough, and the
+[screenshots below](#screenshots) capture each step._
+
+## Example failure surfaced by the evaluator
+
+This is the kind of error the workbench is built to catch — and that lexical metrics miss:
+
+```text
+Reference report : "Moderate right pneumothorax."
+AI draft         : "No pneumothorax identified."
+Detected error   : negation_error
+Severity         : high
+Why it matters   : one word flips the clinical meaning (present → absent).
+Mitigation       : require radiologist correction before sign-off.
+```
+
+The Evaluation tab flags this **RED**, shows both evidence sentences side by side, and the
+[Review workflow](#what-it-does) confirms the radiologist edit removes the error
+(2 errors → 0). See the [Evaluation screenshot](#screenshots).
 
 ## Why this matters
 
@@ -25,7 +57,8 @@ not large-model training. It runs end-to-end on a laptop.
 1. **Study Viewer** — load a chest X-ray study (image, indication, findings, impression, labels).
 2. **Similar Case Retrieval** — find the most similar prior cases via cosine similarity.
 3. **Draft Report Generation** — produce a structured, conservative, RSNA-style draft
-   (template / retrieval / optional local VLM modes) with mandatory uncertainty + disclaimers.
+   (template / retrieval modes, plus an **optional local-VLM adapter** that falls back
+   gracefully when not installed) with mandatory uncertainty + disclaimers.
 4. **Clinical Evaluation** — compare the draft against the reference and surface a
    **clinical error taxonomy**: missed findings, hallucinations, negation errors,
    laterality/uncertainty/severity mismatches — with green/yellow/red status.
@@ -37,13 +70,22 @@ not large-model training. It runs end-to-end on a laptop.
 
 - ✅ Runs **immediately** on synthetic demo data — no datasets, no API keys, no CUDA.
 - ✅ **Clinical error taxonomy**, not just BLEU/ROUGE.
-- ✅ Lightweight **retrieval** (image histogram + TF-IDF), with optional **BiomedCLIP**.
-- ✅ Three **draft-generation** modes incl. optional on-device **MLX VLM**.
+- ✅ Lightweight **retrieval** (image histogram + TF-IDF) working by default, with an
+  **optional BiomedCLIP adapter**.
+- ✅ Two working **draft-generation** modes (template, retrieval) + an **optional on-device
+  MLX-VLM adapter** (integration point with graceful fallback).
+- ✅ Transparent **rule-based weak labeler** for the 14 CXR observations (with an optional
+  CheXbert hook — not bundled).
 - ✅ **Clinician edit + sign-off** workflow with before/after diff.
 - ✅ **SQLite audit log** + exportable case-review JSON.
 - ✅ **Responsible dataset handling** — importers for IU X-Ray, MIMIC-CXR, CheXpert that
   read *your local copy* and never download or redistribute credentialed data.
-- ✅ Graceful degradation: every optional dependency is optional.
+- ✅ Graceful degradation: every optional dependency stays optional.
+
+> **Honest scope:** the *working* path is rule-based weak labeling + a label-level clinical
+> error taxonomy + lightweight retrieval, all running on synthetic data with no GPU.
+> BiomedCLIP, MLX-VLM, RadGraph/RadCliQ, and CheXbert are **optional adapters / integration
+> points** — present as clean seams with graceful fallback, **not** fully wired in this build.
 
 ## Screenshots
 
@@ -107,6 +149,17 @@ user under their own licenses / Data Use Agreements:
 
 Importers validate the local folder layout and print clear instructions if files are
 missing. MIMIC/PhysioNet data **cannot be redistributed** and is never committed.
+
+## Next validation step
+
+The repo intentionally ships **only synthetic data**, so every metric you see in the demo
+is illustrative, not a clinical result. The natural next step — and the honest gap between
+*demo* and *research validation* — is to run the **same evaluation workflow** on a small,
+locally downloaded **IU X-Ray** subset (open) or a **credentialed MIMIC-CXR-JPG** subset,
+then report failure-mode counts (missed / hallucinated / negation / laterality) across
+**100–500 studies** and compare against optional entity-level metrics (RadGraph F1 /
+RadCliQ). No real images or reports would ever be committed — the importers read your local
+copy and the `.gitignore` blocks all data artifacts.
 
 ## Evaluation methodology
 
@@ -181,6 +234,17 @@ python -m pytest
 Covers: demo-data validity, retrieval top-k / self-exclusion, negation labeling
 (`"No pneumothorax"` ≠ positive), missed/hallucinated-finding detection, null-safe
 metrics, and SQLite audit read/write.
+
+**Continuous integration.** [GitHub Actions](.github/workflows/ci.yml) runs the full
+acceptance path on every push (Python 3.11 and 3.12):
+
+```bash
+python scripts/make_demo_data.py
+python scripts/build_index.py --dataset demo --embedding-backend fallback
+python -m pytest
+```
+
+The CI badge at the top of this README reflects the live status.
 
 ## Future work
 
