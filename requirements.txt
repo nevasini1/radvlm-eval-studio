@@ -1,0 +1,23 @@
+# Core (lightweight, CPU-only, Apple Silicon friendly)
+streamlit>=1.30
+numpy>=1.24
+pandas>=2.0
+scikit-learn>=1.3
+Pillow>=10.0
+pytest>=7.4
+
+# --- Optional extras (NOT required for the demo) -----------------------------
+# Install these only if you want richer functionality. The app degrades
+# gracefully when they are absent.
+#
+# Local on-device VLM drafting (Apple Silicon):
+#   pip install mlx-vlm
+#
+# Biomedical CLIP embeddings:
+#   pip install open_clip_torch torch
+#
+# Entity-level report metrics (RadGraph / RadCliQ):
+#   see https://github.com/rajpurkarlab/CXR-Report-Metric
+#
+# Trained CXR labeler:
+#   see https://github.com/stanfordmlgroup/CheXbert

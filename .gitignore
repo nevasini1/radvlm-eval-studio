@@ -1,0 +1,45 @@
+# --- Data, outputs, and artifacts (never commit medical data / PHI / weights) ---
+data/*
+outputs/*
+!data/.gitkeep
+!outputs/.gitkeep
+
+# Index / embedding artifacts
+*.npy
+*.parquet
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Model weights
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.gguf
+*.mlx
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Streamlit
+.streamlit/secrets.toml
