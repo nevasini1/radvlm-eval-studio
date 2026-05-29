@@ -47,11 +47,28 @@ not large-model training. It runs end-to-end on a laptop.
 
 ## Screenshots
 
-_Add screenshots to `docs/screenshots/` and reference them here._
+> Captured from the live app running on synthetic demo data.
 
-| Study Viewer | Evaluation Dashboard | Review & Audit |
-|---|---|---|
-| _`docs/screenshots/viewer.png`_ | _`docs/screenshots/evaluation.png`_ | _`docs/screenshots/review.png`_ |
+**Evaluation dashboard** — the star of the project. A seeded draft that says *"no
+pneumothorax"* on a study with a confirmed pneumothorax is flagged **RED** as a
+high-severity `negation_error`, with the reference and draft evidence sentences side by side.
+
+![Evaluation dashboard](docs/screenshots/evaluation.png)
+
+| Study Viewer | Similar Cases |
+|---|---|
+| ![Study Viewer](docs/screenshots/study_viewer.png) | ![Similar Cases](docs/screenshots/similar_cases.png) |
+
+| Draft Report | Review & Audit Log |
+|---|---|
+| ![Draft Report](docs/screenshots/draft_report.png) | ![Review & Audit Log](docs/screenshots/review.png) |
+
+<details>
+<summary>Overview tab</summary>
+
+![Overview](docs/screenshots/overview.png)
+
+</details>
 
 ## Quickstart
 
