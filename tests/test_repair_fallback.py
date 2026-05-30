@@ -27,6 +27,7 @@ def test_repair_uses_template_fallback_without_mlx():
     before = compare_reports(s.labels, s.report_text, aug.flawed_draft)
     assert before  # there is at least one error to fix
 
+    # No prompt + no adapter path -> always the deterministic template fallback.
     result = repair_report(s, aug.flawed_draft)
     assert result["method"] == "template-fallback"
 
@@ -38,10 +39,14 @@ def test_evaluate_runs_and_reports_fallback(tmp_path):
     from radvlm_eval.data.demo_data import generate_demo_dataset
 
     studies = generate_demo_dataset(data_dir=tmp_path, n_studies=30, seed=8)
-    results = evaluate(studies=studies, save=False, limit=12)
+    # Point at a path that cannot exist so we deterministically exercise the
+    # rule-based fallback regardless of whether a real adapter was trained locally.
+    no_adapter = tmp_path / "no-such-adapter"
+    results = evaluate(studies=studies, adapter_path=no_adapter, save=False, limit=12)
+
     assert results["n_cases"] == 12
     assert results["method"] == "template-fallback"
     assert results["is_trained_adapter"] is False
-    # Repair should not increase total errors in aggregate.
-    agg = results["aggregate"]["total_errors"]
-    assert agg["after"] <= agg["before"]
+    # Repair should not increase the total error count in aggregate.
+    total = results["aggregate"]["total_errors"]
+    assert total["after"] <= total["before"]
