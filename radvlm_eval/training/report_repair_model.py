@@ -68,7 +68,30 @@ def _mlx_repair(  # pragma: no cover - only with mlx-lm + a trained adapter
         from mlx_lm import generate, load
 
         mdl, tokenizer = load(model, adapter_path=str(adapter_path))
-        out = generate(mdl, tokenizer, prompt=prompt, max_tokens=400, verbose=False)
+
+        # Apply the model's chat template so the prompt is in-distribution; the
+        # adapter was trained on system/user/assistant chat turns. Without this
+        # the base model degenerates into repetition.
+        formatted = prompt
+        try:
+            formatted = tokenizer.apply_chat_template(
+                [{"role": "user", "content": prompt}],
+                add_generation_prompt=True,
+                tokenize=False,
+            )
+        except Exception:  # noqa: BLE001 - fall back to the raw prompt
+            formatted = prompt
+
+        # A repetition penalty further guards against runaway loops.
+        gen_kwargs = {"max_tokens": 256, "verbose": False}
+        try:
+            from mlx_lm.sample_utils import make_logits_processors
+
+            gen_kwargs["logits_processors"] = make_logits_processors(repetition_penalty=1.3)
+        except Exception:  # noqa: BLE001 - optional across mlx-lm versions
+            pass
+
+        out = generate(mdl, tokenizer, prompt=formatted, **gen_kwargs)
         return str(out).strip() or None
     except Exception:  # noqa: BLE001
         return None

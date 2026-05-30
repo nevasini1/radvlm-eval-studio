@@ -20,6 +20,7 @@ from radvlm_eval.evaluation.error_taxonomy import ClinicalError, compare_reports
 from radvlm_eval.evaluation.metrics import compute_metrics
 from radvlm_eval.schemas import Study
 from radvlm_eval.training.error_augmenter import applicable_error_types, inject_error
+from radvlm_eval.training.pair_builder import SYSTEM_PROMPT, _user_prompt
 from radvlm_eval.training.report_repair_model import repair_report, report_body
 
 EVAL_JSON = config.OUTPUTS_DIR / "training" / "eval_results.json"
@@ -78,7 +79,12 @@ def evaluate(
         flawed_errors = compare_reports(study.labels, study.report_text, aug.flawed_draft)
         flawed_metrics = compute_metrics(study.labels, study.report_text, aug.flawed_draft)
 
-        repair = repair_report(study, aug.flawed_draft, errors=flawed_errors, adapter_path=adapter_path)
+        # Build the repair prompt so a trained adapter (if present) is actually used.
+        prompt = f"{SYSTEM_PROMPT}\n\n{_user_prompt(study, aug, flawed_errors, 'none')}"
+        repair = repair_report(
+            study, aug.flawed_draft, errors=flawed_errors,
+            adapter_path=adapter_path, prompt=prompt,
+        )
         method_used = str(repair["method"])
         # Score the clinical body only (exclude the "Changes made"/"Safety" footer).
         repaired_text = report_body(str(repair["repaired_text"]))
