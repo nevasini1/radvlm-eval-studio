@@ -36,5 +36,14 @@ jobs:
       - name: Build retrieval index (fallback backend)
         run: python scripts/build_index.py --dataset demo --embedding-backend fallback
 
+      - name: Generate report-repair training pairs (RadDPO-Lite)
+        run: python scripts/make_training_pairs.py
+
+      - name: Show LoRA training command (dry run, no MLX needed)
+        run: python scripts/train_report_repair_adapter.py --dry-run
+
+      - name: Evaluate report repair (template fallback)
+        run: python scripts/evaluate_report_repair_adapter.py
+
       - name: Run tests
         run: python -m pytest -q

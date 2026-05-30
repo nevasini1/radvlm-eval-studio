@@ -180,6 +180,43 @@ Labels are produced by a transparent **rule-based weak labeler** with clause-sco
 negation/uncertainty detection. It is intentionally auditable and documented as *not* a
 substitute for a trained labeler such as **CheXbert** (optional hook provided).
 
+## Small-model training experiment: RadDPO-Lite
+
+Beyond evaluation, the repo includes an optional **text-side** training experiment:
+**RadDPO-Lite — evaluator-generated clinical preference tuning for radiology draft repair.**
+
+- Trains a **tiny local LoRA adapter** to *repair* flawed draft reports using the clinical
+  errors the evaluator detects (missed / hallucinated findings, negation flips, laterality
+  and uncertainty mismatches).
+- Runs on **Apple Silicon with 16 GB unified memory** — LoRA/QLoRA over a 4-bit ~1 GB MLX
+  model (`mlx-community/Qwen3-1.7B-4bit`); **no CUDA**.
+- Uses **synthetic data only**; the evaluator generates the chosen/rejected pairs.
+- **Inspired by** preference optimization for reducing hallucinated radiology report content
+  (DPO; RRG-DPO) — but it **does not diagnose images** or claim clinical performance.
+
+The novel-but-honest angle is the **clinical preference-pair generation**: your own
+evaluator manufactures the training signal. Stage 1 is LoRA **SFT** (the working default);
+**DPO** is an optional path for which DPO-ready JSONL is always exported.
+
+```bash
+python scripts/make_training_pairs.py                       # evaluator-derived SFT + DPO pairs
+python scripts/train_report_repair_adapter.py --dry-run     # show the LoRA command (works anywhere)
+python scripts/train_report_repair_adapter.py --iters 300   # train (Apple Silicon: pip install "mlx-lm[train]")
+python scripts/evaluate_report_repair_adapter.py            # before/after repair metrics
+```
+
+Representative **template-fallback** run (rule-based baseline, no trained adapter — numbers
+are real, not fabricated) over the 36 synthetic studies: total clinical errors **48 → 3**,
+high-severity errors **25 → 0**, mean positive-label F1 **0.53 → 0.92**, with **2** new
+errors introduced. Training an MLX adapter lets you compare a *learned* repairer against
+this baseline. See [`docs/training_experiment.md`](docs/training_experiment.md) and
+[`docs/raddpo_lite_method.md`](docs/raddpo_lite_method.md), and the **Training Lab** tab in
+the app.
+
+> **Honest scope:** this trains *report repair*, not a diagnostic model. The fallback uses
+> reference labels and is a baseline, not a deployable model; a small adapter is not
+> clinically validated and never replaces radiologist review.
+
 ## Why this is relevant to radiology VLM companies
 
 Teams shipping radiology VLM **drafting/review** products (e.g. the space companies like
@@ -218,11 +255,14 @@ radvlm-eval-studio/
     retrieval/   # embedder (fallback + BiomedCLIP), index, similar_cases
     reporting/   # draft_generator, templates, local_vlm (mlx-vlm)
     evaluation/  # report_labeler, error_taxonomy, metrics, radgraph_adapter
+    training/    # RadDPO-Lite: error_augmenter, pair_builder, format_mlx_dataset,
+                 #             train_adapter, evaluate_adapter, report_repair_model
     workflow/    # audit_log, review (before/after metrics)
     storage/     # sqlite
-  scripts/       # make_demo_data, build_index, run_app.sh
-  tests/         # pytest (demo data, retrieval, taxonomy, metrics, audit log)
-  docs/          # technical_memo.md, demo_script.md
+  scripts/       # make_demo_data, build_index, make_training_pairs,
+                 # train_report_repair_adapter, evaluate_report_repair_adapter, run_app.sh
+  tests/         # pytest (demo data, retrieval, taxonomy, metrics, audit log, training)
+  docs/          # technical_memo, demo_script, training_experiment, raddpo_lite_method
 ```
 
 ## Testing

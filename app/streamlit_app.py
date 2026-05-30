@@ -29,6 +29,12 @@ from radvlm_eval.reporting.draft_generator import generate_draft  # noqa: E402
 from radvlm_eval.retrieval.index import build_index, index_exists, load_index  # noqa: E402
 from radvlm_eval.retrieval.similar_cases import find_similar  # noqa: E402
 from radvlm_eval.schemas import CXR_LABELS, Study  # noqa: E402
+from radvlm_eval.training.error_augmenter import applicable_error_types, inject_error  # noqa: E402
+from radvlm_eval.training.evaluate_adapter import EVAL_JSON, evaluate  # noqa: E402
+from radvlm_eval.training.format_mlx_dataset import write_all  # noqa: E402
+from radvlm_eval.training.pair_builder import build_pairs  # noqa: E402
+from radvlm_eval.training.report_repair_model import report_body, repair_report  # noqa: E402
+from radvlm_eval.training.train_adapter import DEFAULT_ADAPTER, TrainConfig, mlx_available  # noqa: E402
 from radvlm_eval.workflow.audit_log import list_audit_entries  # noqa: E402
 from radvlm_eval.workflow.review import export_case_review_json, review_edit  # noqa: E402
 
@@ -129,6 +135,7 @@ tabs = st.tabs(
         "Draft Report",
         "Evaluation",
         "Review & Audit Log",
+        "Training Lab",
         "About / Safety",
     ]
 )
@@ -453,8 +460,114 @@ with tabs[5]:
         st.caption("No audit entries yet — perform a review action above.")
 
 
-# ---- About / Safety --------------------------------------------------------
+# ---- Training Lab ----------------------------------------------------------
 with tabs[6]:
+    st.subheader("Training Lab — RadDPO-Lite")
+    st.caption("Small-model training experiment: an evaluator-generated report-repair adapter.")
+    st.info(
+        "This trains a tiny **text-side** LoRA adapter to *repair* flawed draft reports "
+        "using the errors the evaluator detects. It does **not** train an image model and "
+        "makes **no diagnostic claims**. Synthetic data only."
+    )
+    st.error("Research demo only. Not for diagnosis or clinical use. Not clinically validated.")
+
+    tcol1, tcol2, tcol3 = st.columns(3)
+    tcol1.metric("Base model", "Qwen3-1.7B-4bit")
+    tcol2.metric("Method", "LoRA SFT (+ optional DPO)")
+    tcol3.metric("MLX available", "✅ yes" if mlx_available() else "— no (export only)")
+
+    st.markdown("#### 1) Generate evaluator-derived training pairs")
+    if st.button("Generate training pairs", type="primary"):
+        data = build_pairs(studies, n_flawed_per_study=2, seed=13, index=index)
+        info = write_all(data)
+        st.session_state["training_stats"] = data.stats()
+        st.session_state["training_info"] = info
+    stats = st.session_state.get("training_stats")
+    if stats:
+        s1, s2 = st.columns(2)
+        s1.metric("SFT examples", stats["sft_total"])
+        s2.metric("Preference (DPO) pairs", stats["dpo_total"])
+        st.caption(
+            f"SFT splits — train {stats['sft_train']} / valid {stats['sft_valid']} / test {stats['sft_test']}. "
+            f"Written to `outputs/training/` (DPO-ready JSONL exported even without a DPO trainer)."
+        )
+
+    st.markdown("#### 2) Training command (LoRA via MLX)")
+    cfg = TrainConfig()
+    st.code(cfg.command_str(), language="bash")
+    st.caption(
+        "Run this in a terminal on Apple Silicon (`pip install \"mlx-lm[train]\"`). "
+        "Long training is intentionally not launched from the UI — only the dry-run command is shown."
+    )
+
+    st.markdown("#### 3) Evaluate report repair (before vs after)")
+    adapter_status = "trained adapter found" if DEFAULT_ADAPTER.exists() else "no trained adapter — template fallback"
+    st.caption(f"Adapter status: **{adapter_status}**.")
+    if st.button("Evaluate repair model"):
+        with st.spinner("Repairing and scoring synthetic cases…"):
+            st.session_state["repair_eval"] = evaluate(adapter_path=DEFAULT_ADAPTER, save=True)
+
+    eval_res = st.session_state.get("repair_eval")
+    if eval_res is None and EVAL_JSON.exists():
+        import json as _json
+
+        eval_res = _json.loads(EVAL_JSON.read_text())
+
+    if eval_res:
+        st.markdown(f"**Method:** {eval_res['label']} · **cases:** {eval_res['n_cases']}")
+        agg = eval_res["aggregate"]
+        rows = [
+            {"Error class": k.replace("_", " "), "Before": v["before"],
+             "After": v["after"], "Δ": v["delta"]}
+            for k, v in agg.items()
+        ]
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        e1, e2, e3 = st.columns(3)
+        e1.metric("Label F1", eval_res["label_f1"]["after"],
+                  delta=round(eval_res["label_f1"]["after"] - eval_res["label_f1"]["before"], 3))
+        e2.metric("High-severity errors", agg["high_severity_total"]["after"],
+                  delta=agg["high_severity_total"]["delta"])
+        e3.metric("New errors introduced", eval_res["new_errors_introduced"])
+        if not eval_res.get("is_trained_adapter", False):
+            st.warning(
+                "These numbers come from the **rule-based template fallback** (no trained "
+                "adapter present). They are real, not fabricated — train an MLX adapter to "
+                "compare a learned model against this baseline."
+            )
+
+    st.markdown("#### Example repair cases")
+    examples = []
+    rng_seed = 0
+    for st_obj in studies:
+        if len(examples) >= 3:
+            break
+        opts = applicable_error_types(st_obj)
+        etype = "negation_error" if "negation_error" in opts else opts[0]
+        import random as _random
+
+        aug = inject_error(st_obj, etype, _random.Random(rng_seed))
+        rng_seed += 1
+        if aug is None:
+            continue
+        errs_before = compare_reports(st_obj.labels, st_obj.report_text, aug.flawed_draft)
+        rep = repair_report(st_obj, aug.flawed_draft, errors=errs_before, adapter_path=DEFAULT_ADAPTER)
+        errs_after = compare_reports(st_obj.labels, st_obj.report_text, report_body(str(rep["repaired_text"])))
+        examples.append((st_obj, aug, errs_before, rep, errs_after))
+
+    for st_obj, aug, errs_before, rep, errs_after in examples:
+        with st.expander(f"{st_obj.study_id} — injected {aug.error_type} ({aug.severity})"):
+            st.markdown("**Flawed draft**")
+            st.code(aug.flawed_draft, language="markdown")
+            st.markdown("**Evaluator-detected errors (before):** "
+                        + (", ".join(f"{e.error_type}:{e.finding}" for e in errs_before) or "none"))
+            st.markdown(f"**Repaired draft** (method: {rep['method']})")
+            st.code(str(rep["repaired_text"]), language="markdown")
+            st.markdown("**Errors after repair:** "
+                        + (", ".join(f"{e.error_type}:{e.finding}" for e in errs_after) or "✅ none"))
+
+
+# ---- About / Safety --------------------------------------------------------
+with tabs[7]:
     st.subheader("About / Safety")
     st.error(
         "**Not for diagnosis. Not validated. No patient data included.** "
