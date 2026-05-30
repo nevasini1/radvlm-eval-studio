@@ -12,6 +12,7 @@ from __future__ import annotations
 import importlib.util
 import shlex
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
@@ -39,8 +40,10 @@ class TrainConfig:
     learning_rate: float = 1e-5
 
     def command(self) -> List[str]:
+        # mlx-lm >= 0.20 exposes the trainer as the `mlx_lm lora` subcommand.
+        # Invoking via the current interpreter keeps it inside this venv.
         return [
-            "mlx_lm.lora",
+            sys.executable, "-m", "mlx_lm", "lora",
             "--model", self.model,
             "--train",
             "--data", str(self.data),
@@ -52,6 +55,11 @@ class TrainConfig:
 
     def command_str(self) -> str:
         return " ".join(shlex.quote(p) for p in self.command())
+
+    def display_command(self) -> str:
+        """Human-friendly command for docs/UI (uses `python -m mlx_lm lora`)."""
+        parts = ["python", "-m", "mlx_lm", "lora"] + self.command()[4:]
+        return " ".join(shlex.quote(p) for p in parts)
 
 
 def mlx_available() -> bool:
