@@ -194,6 +194,12 @@ Beyond evaluation, the repo includes an optional **text-side** training experime
 - **Inspired by** preference optimization for reducing hallucinated radiology report content
   (DPO; RRG-DPO) — but it **does not diagnose images** or claim clinical performance.
 
+**📉 Actually trained on a 16 GB Mac (no CUDA):** `Qwen3-1.7B-4bit`, LoRA SFT, 300 iters →
+**train loss 3.45 → 0.03**, **validation loss 5.32 → 0.09**, ~6 min, 2.3 GB peak, ~19 MB
+adapter. On 36 synthetic studies the trained adapter cuts total clinical errors **48 → 11**,
+high-severity **25 → 5**, and lifts positive-label **F1 0.53 → 0.92**. Full table in
+[Real results](#real-results--a-lora-adapter-actually-trained-on-a-16-gb-mac) below.
+
 The novel-but-honest angle is the **clinical preference-pair generation**: your own
 evaluator manufactures the training signal. Stage 1 is LoRA **SFT** (the working default);
 **DPO** is an optional path for which DPO-ready JSONL is always exported.
